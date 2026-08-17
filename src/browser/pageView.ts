@@ -319,7 +319,7 @@ export function createMetaBrowser(rawConfig: MetaBrowserConfig) {
   }
 
   function checkScroll(): void {
-    if (detached || viewContentPromise || !config.viewContent) return;
+    if (detached || viewContentPromise) return;
     if (viewContentThreshold <= 0 || viewContentThreshold > 1) return;
     const percent = getScrollPercent();
     if (percent >= viewContentThreshold) {
@@ -339,7 +339,7 @@ export function createMetaBrowser(rawConfig: MetaBrowserConfig) {
   };
 
   function attachScroll(): void {
-    if (typeof window === 'undefined' || !config.viewContent || !onScroll) return;
+    if (typeof window === 'undefined' || !onScroll) return;
     if (typeof window.addEventListener === 'function') {
       window.addEventListener('scroll', onScroll, { passive: true });
     }
@@ -363,15 +363,13 @@ export function createMetaBrowser(rawConfig: MetaBrowserConfig) {
     detachScroll();
   }
 
-  if (config.viewContent) {
-    if (typeof window !== 'undefined' && typeof window.__vvViewContentCleanup === 'function') {
-      window.__vvViewContentCleanup();
-    }
-    if (typeof window !== 'undefined') {
-      window.__vvViewContentCleanup = cleanup;
-    }
-    attachScroll();
+  if (typeof window !== 'undefined' && typeof window.__vvViewContentCleanup === 'function') {
+    window.__vvViewContentCleanup();
   }
+  if (typeof window !== 'undefined') {
+    window.__vvViewContentCleanup = cleanup;
+  }
+  attachScroll();
 
   return {
     firePageView,

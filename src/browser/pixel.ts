@@ -5,41 +5,68 @@ declare global {
   interface Window {
     fbq?: (...args: unknown[]) => void;
     __vvPixelsInitialized?: boolean;
+    __vvPixelLoaded?: boolean;
+    __vvPixelLoadPromise?: Promise<void>;
   }
 }
 
 export function loadPixel(): Promise<void> {
-  return new Promise<void>((resolve) => {
-    if (typeof window === 'undefined' || typeof document === 'undefined') {
-      resolve();
-      return;
-    }
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return Promise.resolve();
+  }
 
-    if (window.fbq && typeof window.fbq === 'function' && document.getElementById(SCRIPT_ID)) {
-      resolve();
-      return;
-    }
+  if (window.__vvPixelLoaded) {
+    return Promise.resolve();
+  }
 
-    if (window.fbq && typeof window.fbq === 'function') {
-      resolve();
-      return;
-    }
+  if (window.__vvPixelLoadPromise) {
+    return window.__vvPixelLoadPromise;
+  }
 
-    const existing = document.getElementById(SCRIPT_ID);
-    if (existing) {
-      existing.addEventListener('load', () => resolve());
-      existing.addEventListener('error', () => resolve());
-      return;
-    }
+  if (!window.fbq) {
+    const fbq = ((...args: unknown[]) => {
+      (fbq as unknown as { queue: unknown[] }).queue.push(args);
+    }) as unknown as (...args: unknown[]) => void;
+    (fbq as unknown as { queue: unknown[] }).queue = [] as unknown[];
+    window.fbq = fbq;
+  }
 
+  const existing = document.getElementById(SCRIPT_ID);
+  if (existing) {
+    window.__vvPixelLoadPromise = new Promise<void>((resolve) => {
+      if (window.__vvPixelLoaded) {
+        resolve();
+        return;
+      }
+      const onLoad = () => {
+        window.__vvPixelLoaded = true;
+        resolve();
+      };
+      const onError = () => {
+        resolve();
+      };
+      existing.addEventListener('load', onLoad, { once: true });
+      existing.addEventListener('error', onError, { once: true });
+    });
+    return window.__vvPixelLoadPromise;
+  }
+
+  window.__vvPixelLoadPromise = new Promise<void>((resolve) => {
     const script = document.createElement('script');
     script.id = SCRIPT_ID;
     script.src = PIXEL_SCRIPT_URL;
     script.async = true;
-    script.onload = () => resolve();
-    script.onerror = () => resolve();
+    script.onload = () => {
+      window.__vvPixelLoaded = true;
+      resolve();
+    };
+    script.onerror = () => {
+      resolve();
+    };
     document.head.appendChild(script);
   });
+
+  return window.__vvPixelLoadPromise;
 }
 
 export function initializePixel(

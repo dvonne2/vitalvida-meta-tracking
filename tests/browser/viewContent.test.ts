@@ -88,6 +88,14 @@ describe('browser/viewContent', () => {
     });
   }
 
+  function metaNoConfig() {
+    return createMetaBrowser({
+      pixelId: '987654321098765',
+      capiEndpoint: '/api/capi',
+      country: 'us',
+    });
+  }
+
   async function waitForScroll() {
     await new Promise<void>((resolve) => setTimeout(() => resolve(), 10));
   }
@@ -253,5 +261,60 @@ describe('browser/viewContent', () => {
     handler();
     await waitForScroll();
     assert.equal(fbqCalls.filter(c => c[1] === 'ViewContent').length, 0);
+  });
+
+  it('creates scroll listener even when no viewContent config is supplied', async () => {
+    reset();
+    metaNoConfig();
+    assert.equal(scrollHandlers.length, 1);
+  });
+
+  it('19% scroll does NOT fire ViewContent without config', async () => {
+    reset();
+    metaNoConfig();
+    (globalThis as any).window.scrollY = 95;
+    const handler = scrollHandlers[0];
+    assert.ok(handler);
+    handler();
+    await waitForScroll();
+    assert.equal(fbqCalls.filter(c => c[1] === 'ViewContent').length, 0);
+  });
+
+  it('reaching 20% DOES fire ViewContent without config', async () => {
+    reset();
+    metaNoConfig();
+    (globalThis as any).window.scrollY = 100;
+    const handler = scrollHandlers[0];
+    assert.ok(handler);
+    handler();
+    await waitForScroll();
+    assert.equal(fbqCalls.filter(c => c[1] === 'ViewContent').length, 1);
+    assert.equal((capturedBody as any)?.event_name, 'ViewContent');
+  });
+
+  it('ViewContent fires once only without config', async () => {
+    reset();
+    metaNoConfig();
+    const handler = scrollHandlers[0];
+    (globalThis as any).window.scrollY = 100;
+    handler();
+    await waitForScroll();
+    (globalThis as any).window.scrollY = 200;
+    handler();
+    (globalThis as any).window.scrollY = 400;
+    handler();
+    await waitForScroll();
+    assert.equal(fbqCalls.filter(c => c[1] === 'ViewContent').length, 1);
+  });
+
+  it('custom ViewContent data remains optional', async () => {
+    reset();
+    metaNoConfig();
+    (globalThis as any).window.scrollY = 100;
+    const handler = scrollHandlers[0];
+    handler();
+    await waitForScroll();
+    const custom = (capturedBody as any)?.custom_data ?? {};
+    assert.equal(Object.keys(custom).length, 0);
   });
 });
