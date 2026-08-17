@@ -128,4 +128,58 @@ describe('browser/pageView', () => {
     assert.equal(url.includes('fbclid'), false);
     assert.equal(url.includes('utm_source=newsletter'), true);
   });
+
+  it('getTrackingContext returns stable external id', () => {
+    (globalThis as any).document.cookie = '';
+    const meta = createMetaBrowser({
+      pixelId: '987654321098765',
+      capiEndpoint: '/api/capi',
+    });
+    const first = meta.getTrackingContext();
+    const second = meta.getTrackingContext();
+    assert.ok(first.externalId);
+    assert.equal(first.externalId, second.externalId);
+  });
+
+  it('getTrackingContext returns genuine fbp when _fbp cookie exists', () => {
+    (globalThis as any).document.cookie = '_fbp=fb.1.1234567890.browserid';
+    const meta = createMetaBrowser({
+      pixelId: '987654321098765',
+      capiEndpoint: '/api/capi',
+    });
+    const ctx = meta.getTrackingContext();
+    assert.equal(ctx.fbp, 'fb.1.1234567890.browserid');
+  });
+
+  it('getTrackingContext does not fabricate fbp when absent', () => {
+    (globalThis as any).document.cookie = '';
+    const meta = createMetaBrowser({
+      pixelId: '987654321098765',
+      capiEndpoint: '/api/capi',
+    });
+    const ctx = meta.getTrackingContext();
+    assert.equal(ctx.fbp, null);
+  });
+
+  it('getTrackingContext returns genuine fbc when _fbc cookie exists', () => {
+    (globalThis as any).window.location.href = 'https://example.com/';
+    (globalThis as any).document.cookie = '_fbc=fb.1.1234567890.clickid';
+    const meta = createMetaBrowser({
+      pixelId: '987654321098765',
+      capiEndpoint: '/api/capi',
+    });
+    const ctx = meta.getTrackingContext();
+    assert.equal(ctx.fbc, 'fb.1.1234567890.clickid');
+  });
+
+  it('getTrackingContext does not fabricate fbc when absent', () => {
+    (globalThis as any).window.location.href = 'https://example.com/';
+    (globalThis as any).document.cookie = '';
+    const meta = createMetaBrowser({
+      pixelId: '987654321098765',
+      capiEndpoint: '/api/capi',
+    });
+    const ctx = meta.getTrackingContext();
+    assert.equal(ctx.fbc, null);
+  });
 });

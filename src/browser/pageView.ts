@@ -305,6 +305,14 @@ export function createMetaBrowser(rawConfig: MetaBrowserConfig) {
     return null;
   }
 
+  function getTrackingContext(): { externalId: string; fbp: string | null; fbc: string | null } {
+    return {
+      externalId: getVisitorId(config.storageKey),
+      fbp: getFbp(),
+      fbc: captureFbc(),
+    };
+  }
+
   function resetCheckout(): void {
     checkoutData = {};
     initiateCheckoutPromise = null;
@@ -371,5 +379,6 @@ export function createMetaBrowser(rawConfig: MetaBrowserConfig) {
     updateCheckout,
     resetCheckout,
     cleanup,
+    getTrackingContext,
   };
 }
