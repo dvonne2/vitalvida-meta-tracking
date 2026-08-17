@@ -11,6 +11,20 @@ export interface ViewContentConfig {
   currency?: string;
 }
 
+export interface CheckoutUpdate {
+  name?: string;
+  phone?: string;
+  email?: string;
+  contentName?: string;
+  contentIds?: string[];
+  contentType?: string;
+  value?: number;
+  currency?: string;
+  numItems?: number;
+  state?: string;
+  city?: string;
+}
+
 export interface MetaBrowserConfig extends MetaBaseConfig {
   capiEndpoint: string;
   country?: string;
@@ -58,6 +72,27 @@ export interface ViewContentPayload {
   custom_data: Record<string, unknown>;
 }
 
+export interface InitiateCheckoutPayload {
+  event_name: 'InitiateCheckout';
+  event_id: string;
+  event_time: number;
+  action_source: 'website';
+  event_source_url: string;
+  user_data: {
+    external_id: string;
+    phone: string;
+    first_name: string;
+    surname?: string;
+    email?: string;
+    state?: string;
+    city?: string;
+    fbp?: string;
+    fbc?: string;
+    country?: string;
+  };
+  custom_data: Record<string, unknown>;
+}
+
 export interface CapiUserData {
   client_ip_address: string;
   client_user_agent: string;
@@ -65,10 +100,16 @@ export interface CapiUserData {
   fbp?: string;
   fbc?: string;
   country?: string[];
+  ph?: string;
+  em?: string;
+  fn?: string;
+  ln?: string;
+  ct?: string;
+  st?: string;
 }
 
 export interface CapiEvent {
-  event_name: 'PageView' | 'ViewContent';
+  event_name: 'PageView' | 'ViewContent' | 'InitiateCheckout';
   event_id: string;
   event_time: number;
   action_source: 'website';
@@ -94,6 +135,12 @@ export interface BrowserPageViewResult {
 }
 
 export interface BrowserViewContentResult {
+  eventId: string;
+  browserSent: boolean;
+  capiResult: MetaSendResult | null;
+}
+
+export interface BrowserInitiateCheckoutResult {
   eventId: string;
   browserSent: boolean;
   capiResult: MetaSendResult | null;

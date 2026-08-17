@@ -83,3 +83,31 @@ export function trackViewContent(
     return false;
   }
 }
+
+export function updatePixelAdvancedMatching(
+  pixelId: string,
+  advancedMatchingData: Record<string, unknown>,
+): boolean {
+  if (typeof window === 'undefined' || typeof window.fbq !== 'function') return false;
+
+  try {
+    window.fbq('init', pixelId, advancedMatchingData);
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
+
+export function trackInitiateCheckout(
+  eventId: string,
+  customData: Record<string, unknown>,
+): boolean {
+  if (typeof window === 'undefined' || typeof window.fbq !== 'function') return false;
+
+  try {
+    window.fbq('track', 'InitiateCheckout', customData, { eventID: eventId });
+    return true;
+  } catch (err) {
+    return false;
+  }
+}

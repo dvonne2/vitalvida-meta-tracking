@@ -1,5 +1,6 @@
 export const PAGE_VIEW_PREFIX = 'pv';
 export const VIEW_CONTENT_PREFIX = 'vc';
+export const INITIATE_CHECKOUT_PREFIX = 'ic';
 
 function generateId(prefix: string): string {
   let s = '';
@@ -17,6 +18,10 @@ export function generateViewContentEventId(): string {
   return generateId(VIEW_CONTENT_PREFIX);
 }
 
+export function generateInitiateCheckoutEventId(): string {
+  return generateId(INITIATE_CHECKOUT_PREFIX);
+}
+
 export function isValidPageViewEventId(value: unknown): value is string {
   return typeof value === 'string' && /^pv_[0-9a-f]{16}$/.test(value);
 }
@@ -25,6 +30,10 @@ export function isValidViewContentEventId(value: unknown): value is string {
   return typeof value === 'string' && /^vc_[0-9a-f]{16}$/.test(value);
 }
 
+export function isValidInitiateCheckoutEventId(value: unknown): value is string {
+  return typeof value === 'string' && /^ic_[0-9a-f]{16}$/.test(value);
+}
+
 export function isValidEventId(value: unknown): value is string {
-  return typeof value === 'string' && /^(pv|vc)_[0-9a-f]{16}$/.test(value);
+  return typeof value === 'string' && /^(pv|vc|ic)_[0-9a-f]{16}$/.test(value);
 }

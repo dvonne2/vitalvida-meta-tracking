@@ -1,18 +1,27 @@
 import type {
+  BrowserInitiateCheckoutResult,
   BrowserPageViewResult,
   BrowserViewContentResult,
+  CheckoutUpdate,
+  InitiateCheckoutPayload,
   MetaBrowserConfig,
   MetaSendResult,
   PageViewPayload,
   ViewContentConfig,
   ViewContentPayload,
 } from '../shared/types.js';
+import type { SplitName } from '../shared/checkout.js';
 import { assertBrowserConfig, normalizeBrowserConfig } from '../shared/config.js';
-import { generatePageViewEventId, generateViewContentEventId } from '../shared/eventId.js';
+import {
+  generatePageViewEventId,
+  generateViewContentEventId,
+  generateInitiateCheckoutEventId,
+} from '../shared/eventId.js';
 import { sanitizeSourceUrl } from '../shared/sourceUrl.js';
+import { normalizePhone, splitName, isValidEmail } from '../shared/checkout.js';
 import { getVisitorId } from './identity.js';
 import { captureFbc, getFbp } from './attribution.js';
-import { initializePixel, loadPixel, trackPageView, trackViewContent } from './pixel.js';
+import { initializePixel, loadPixel, trackPageView, trackViewContent, trackInitiateCheckout, updatePixelAdvancedMatching } from './pixel.js';
 
 declare global {
   interface Window {
@@ -26,7 +35,7 @@ const DEFAULT_VIEWCONTENT_THRESHOLD_PERCENT = 20;
 
 async function postCapi(
   endpoint: string,
-  payload: PageViewPayload | ViewContentPayload,
+  payload: PageViewPayload | ViewContentPayload | InitiateCheckoutPayload,
 ): Promise<MetaSendResult> {
   try {
     const res = await fetch(endpoint, {
@@ -68,6 +77,23 @@ function buildViewContentCustomData(viewContent?: ViewContentConfig): Record<str
   return data;
 }
 
+function buildInitiateCheckoutCustomData(checkout: CheckoutUpdate): Record<string, unknown> {
+  const data: Record<string, unknown> = {};
+  if (checkout.contentName) data.content_name = checkout.contentName;
+  if (Array.isArray(checkout.contentIds) && checkout.contentIds.length > 0) {
+    data.content_ids = checkout.contentIds;
+    data.contents = checkout.contentIds.map((id) => ({
+      id,
+      quantity: typeof checkout.numItems === 'number' ? checkout.numItems : 1,
+    }));
+  }
+  if (checkout.contentType) data.content_type = checkout.contentType;
+  if (typeof checkout.numItems === 'number') data.num_items = checkout.numItems;
+  if (typeof checkout.value === 'number') data.value = checkout.value;
+  if (checkout.currency) data.currency = checkout.currency;
+  return data;
+}
+
 function getScrollPercent(): number {
   if (typeof window === 'undefined' || typeof document === 'undefined') return 0;
   const scrollTop = window.scrollY ?? 0;
@@ -88,6 +114,9 @@ export function createMetaBrowser(rawConfig: MetaBrowserConfig) {
   let scrollTimeout: ReturnType<typeof setTimeout> | null = null;
   let onScroll: EventListener | null = null;
   let detached = false;
+
+  let checkoutData: CheckoutUpdate = {};
+  let initiateCheckoutPromise: Promise<BrowserInitiateCheckoutResult> | null = null;
 
   async function firePageView(): Promise<BrowserPageViewResult> {
     const result: BrowserPageViewResult = {
@@ -189,6 +218,98 @@ export function createMetaBrowser(rawConfig: MetaBrowserConfig) {
     return viewContentPromise;
   }
 
+  async function fireInitiateCheckout(
+    phone: string,
+    name: SplitName,
+  ): Promise<BrowserInitiateCheckoutResult> {
+    const result: BrowserInitiateCheckoutResult = {
+      eventId: '',
+      browserSent: false,
+      capiResult: null,
+    };
+
+    try {
+      const visitorId = getVisitorId(config.storageKey);
+      const fbc = captureFbc();
+      const fbp = getFbp();
+      const eventId = generateInitiateCheckoutEventId();
+
+      result.eventId = eventId;
+
+      try {
+        await loadPixel();
+      } catch (err) {
+        if (config.onError) config.onError(err);
+      }
+
+      const email = isValidEmail(checkoutData.email);
+      const city = checkoutData.city?.trim().toLowerCase();
+      const state = checkoutData.state?.trim().toLowerCase();
+      const country = config.country;
+
+      const advancedMatchingData: Record<string, unknown> = {
+        external_id: visitorId,
+        ph: phone,
+        fn: name.firstName,
+      };
+
+      if (email) advancedMatchingData.em = email;
+      if (name.surname) advancedMatchingData.ln = name.surname;
+      if (city) advancedMatchingData.ct = city;
+      if (state) advancedMatchingData.st = state;
+      if (country) advancedMatchingData.country = country;
+
+      updatePixelAdvancedMatching(config.pixelId, advancedMatchingData);
+
+      const customData = buildInitiateCheckoutCustomData(checkoutData);
+      result.browserSent = trackInitiateCheckout(eventId, customData);
+
+      const payload: InitiateCheckoutPayload = {
+        event_name: 'InitiateCheckout',
+        event_id: eventId,
+        event_time: Math.floor(Date.now() / 1000),
+        action_source: 'website',
+        event_source_url: sanitizeSourceUrl(globalThis.location?.href || '', {}) ?? '',
+        user_data: {
+          external_id: visitorId,
+          phone,
+          first_name: name.firstName,
+          ...(name.surname ? { surname: name.surname } : {}),
+          ...(email ? { email } : {}),
+          ...(state ? { state } : {}),
+          ...(city ? { city } : {}),
+          ...(fbp ? { fbp } : {}),
+          ...(fbc ? { fbc } : {}),
+          ...(country ? { country } : {}),
+        },
+        custom_data: customData,
+      };
+
+      result.capiResult = await postCapi(config.capiEndpoint, payload);
+    } catch (err) {
+      if (config.onError) config.onError(err);
+    }
+
+    return result;
+  }
+
+  async function updateCheckout(update: CheckoutUpdate): Promise<BrowserInitiateCheckoutResult | null> {
+    if (initiateCheckoutPromise) return initiateCheckoutPromise;
+    checkoutData = { ...checkoutData, ...update };
+    const phone = normalizePhone(checkoutData.phone);
+    const name = splitName(checkoutData.name);
+    if (phone && name) {
+      initiateCheckoutPromise = fireInitiateCheckout(phone, name);
+      return initiateCheckoutPromise;
+    }
+    return null;
+  }
+
+  function resetCheckout(): void {
+    checkoutData = {};
+    initiateCheckoutPromise = null;
+  }
+
   function checkScroll(): void {
     if (detached || viewContentPromise || !config.viewContent) return;
     if (viewContentThreshold <= 0 || viewContentThreshold > 1) return;
@@ -247,6 +368,8 @@ export function createMetaBrowser(rawConfig: MetaBrowserConfig) {
   return {
     firePageView,
     fireViewContent,
+    updateCheckout,
+    resetCheckout,
     cleanup,
   };
 }
