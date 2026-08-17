@@ -314,8 +314,13 @@ export function createMetaCapi(rawConfig: MetaCapiConfig) {
         return { ok: false, eventName: 'Purchase', eventId: '', messages: ['Missing order ID'] };
       }
 
+      let alreadySent = false;
       if (config.idempotency) {
-        const alreadySent = await config.idempotency.has(payload.event_id);
+        try {
+          alreadySent = await config.idempotency.has(payload.event_id);
+        } catch (err) {
+          if (config.onError) config.onError(err);
+        }
         if (alreadySent) {
           return {
             ok: true,
@@ -389,7 +394,11 @@ export function createMetaCapi(rawConfig: MetaCapiConfig) {
 
       const result = await sendCapiEvent(config, { event, requestContext });
       if (result.ok && config.idempotency) {
-        await config.idempotency.mark(payload.event_id);
+        try {
+          await config.idempotency.mark(payload.event_id);
+        } catch (err) {
+          if (config.onError) config.onError(err);
+        }
       }
       return result;
     },

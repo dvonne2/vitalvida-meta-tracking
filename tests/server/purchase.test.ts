@@ -41,7 +41,7 @@ describe('server/purchase', () => {
   function validBody() {
     return {
       event_name: 'Purchase',
-      event_id: 'FHS-12345',
+      event_id: 'VV-12345',
       event_time: Math.floor(Date.now() / 1000),
       action_source: 'website',
       event_source_url: 'https://example.com/',
@@ -55,7 +55,7 @@ describe('server/purchase', () => {
         country: 'ng',
       },
       custom_data: {
-        order_id: 'FHS-12345',
+        order_id: 'VV-12345',
         value: 12000,
         currency: 'NGN',
         content_ids: ['pkg-a'],
@@ -89,7 +89,7 @@ describe('server/purchase', () => {
       headers: { origin: 'https://example.com', host: 'example.com' },
     });
     assert.equal(res.ok, false);
-    assert.equal(res.eventId, 'FHS-12345');
+    assert.equal(res.eventId, 'VV-12345');
   });
 
   it('Purchase requires currency', async () => {
@@ -103,7 +103,7 @@ describe('server/purchase', () => {
       headers: { origin: 'https://example.com', host: 'example.com' },
     });
     assert.equal(res.ok, false);
-    assert.equal(res.eventId, 'FHS-12345');
+    assert.equal(res.eventId, 'VV-12345');
   });
 
   it('Purchase uses order ID as event ID', async () => {
@@ -114,9 +114,9 @@ describe('server/purchase', () => {
       headers: { origin: 'https://example.com', host: 'example.com' },
     });
     assert.equal(res.ok, true);
-    assert.equal(res.eventId, 'FHS-12345');
-    assert.equal((capturedRequestBody as any).data[0].event_id, 'FHS-12345');
-    assert.equal((capturedRequestBody as any).data[0].custom_data.order_id, 'FHS-12345');
+    assert.equal(res.eventId, 'VV-12345');
+    assert.equal((capturedRequestBody as any).data[0].event_id, 'VV-12345');
+    assert.equal((capturedRequestBody as any).data[0].custom_data.order_id, 'VV-12345');
   });
 
   it('same order ID always produces the same event ID', async () => {
@@ -130,8 +130,8 @@ describe('server/purchase', () => {
       body: validBody(),
       headers: { origin: 'https://example.com', host: 'example.com' },
     });
-    assert.equal(first.eventId, 'FHS-12345');
-    assert.equal(second.eventId, 'FHS-12345');
+    assert.equal(first.eventId, 'VV-12345');
+    assert.equal(second.eventId, 'VV-12345');
     assert.equal(first.ok, true);
     assert.equal(second.ok, true);
   });
@@ -260,7 +260,7 @@ describe('server/purchase', () => {
     const capi = createMetaCapi(baseConfig);
     const body = { ...validBody() };
     (body as any).custom_data = {
-      order_id: 'FHS-12345',
+      order_id: 'VV-12345',
       value: 12000,
       currency: 'NGN',
     };
@@ -363,7 +363,7 @@ describe('server/purchase', () => {
       headers: { origin: 'https://example.com', host: 'example.com' },
     });
     assert.equal(res.ok, true);
-    assert.equal(res.eventId, 'FHS-12345');
+    assert.equal(res.eventId, 'VV-12345');
     assert.equal(fetchCalls, 1);
     assert.equal(res.skipped, undefined);
   });
@@ -379,7 +379,7 @@ describe('server/purchase', () => {
       headers: { origin: 'https://example.com', host: 'example.com' },
     });
     assert.equal(res.ok, true);
-    assert.equal(res.eventId, 'FHS-12345');
+    assert.equal(res.eventId, 'VV-12345');
     assert.equal(res.skipped, true);
     assert.equal(res.reason, 'already_sent');
     assert.equal(fetchCalls, 0);
@@ -420,7 +420,7 @@ describe('server/purchase', () => {
       body: validBody(),
       headers: { origin: 'https://example.com', host: 'example.com' },
     });
-    assert.deepEqual(marked, ['FHS-12345']);
+    assert.deepEqual(marked, ['VV-12345']);
   });
 
   it('failed Meta response does not mark it', async () => {
@@ -508,7 +508,7 @@ describe('server/purchase', () => {
     assert.equal(first.ok, false);
     assert.equal(second.ok, true);
     assert.equal(attempt, 2);
-    assert.deepEqual(marked, ['FHS-12345']);
+    assert.deepEqual(marked, ['VV-12345']);
     (globalThis as any).fetch = async (_url: string, init: RequestInit) => {
       fetchCalls += 1;
       if (init && init.body) capturedRequestBody = JSON.parse(init.body as string) as Record<string, unknown>;
@@ -533,5 +533,33 @@ describe('server/purchase', () => {
       headers: { origin: 'https://example.com', host: 'example.com' },
     });
     assert.equal(fetchCalls, 2);
+  });
+
+  it('idempotency store has() failure does not crash and allows send', async () => {
+    reset();
+    const capi = createMetaCapi({
+      ...baseConfig,
+      idempotency: { has: async () => { throw new Error('store down'); }, mark: async () => {} },
+    });
+    const res = await capi.sendPurchase({
+      body: validBody(),
+      headers: { origin: 'https://example.com', host: 'example.com' },
+    });
+    assert.equal(res.ok, true);
+    assert.equal(fetchCalls, 1);
+  });
+
+  it('idempotency store mark() failure does not crash after successful send', async () => {
+    reset();
+    const capi = createMetaCapi({
+      ...baseConfig,
+      idempotency: { has: async () => false, mark: async () => { throw new Error('store down'); } },
+    });
+    const res = await capi.sendPurchase({
+      body: validBody(),
+      headers: { origin: 'https://example.com', host: 'example.com' },
+    });
+    assert.equal(res.ok, true);
+    assert.equal(res.eventId, 'VV-12345');
   });
 });
