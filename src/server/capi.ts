@@ -32,9 +32,11 @@ export function logCapiDiagnostic(
   body: unknown,
   ok: boolean,
 ): void {
+  const custom = event.custom_data as { order_id?: string };
   const ctx = {
     event: event.event_name,
     event_id: event.event_id,
+    order_id: custom.order_id,
     pixel_id: config.pixelId,
     status,
     events_received: (body as { events_received?: number }).events_received,

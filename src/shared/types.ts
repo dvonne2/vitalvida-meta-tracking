@@ -33,12 +33,18 @@ export interface MetaBrowserConfig extends MetaBaseConfig {
   onError?: (err: unknown) => void;
 }
 
+export interface MetaIdempotencyStore {
+  has(key: string): Promise<boolean>;
+  mark(key: string): Promise<void>;
+}
+
 export interface MetaCapiConfig extends MetaBaseConfig {
   accessToken: string;
   apiVersion: string;
   testEventCode?: string;
   allowedOrigins?: string[];
   allowedSourceHosts?: string[];
+  idempotency?: MetaIdempotencyStore;
   onError?: (err: unknown) => void;
 }
 
@@ -93,6 +99,28 @@ export interface InitiateCheckoutPayload {
   custom_data: Record<string, unknown>;
 }
 
+export interface PurchasePayload {
+  event_name: 'Purchase';
+  event_id: string;
+  event_time: number;
+  action_source: 'website';
+  event_source_url: string;
+  user_data: {
+    external_id: string;
+    phone?: string;
+    name?: string;
+    first_name?: string;
+    surname?: string;
+    email?: string;
+    state?: string;
+    city?: string;
+    country?: string;
+    fbp?: string;
+    fbc?: string;
+  };
+  custom_data: Record<string, unknown>;
+}
+
 export interface CapiUserData {
   client_ip_address: string;
   client_user_agent: string;
@@ -109,7 +137,7 @@ export interface CapiUserData {
 }
 
 export interface CapiEvent {
-  event_name: 'PageView' | 'ViewContent' | 'InitiateCheckout';
+  event_name: 'PageView' | 'ViewContent' | 'InitiateCheckout' | 'Purchase';
   event_id: string;
   event_time: number;
   action_source: 'website';
@@ -126,6 +154,8 @@ export interface MetaSendResult {
   eventsReceived?: number;
   messages?: unknown[];
   fbtraceId?: string;
+  skipped?: boolean;
+  reason?: string;
 }
 
 export interface BrowserPageViewResult {
