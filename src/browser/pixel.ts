@@ -69,3 +69,17 @@ export function trackPageView(eventId: string): boolean {
     return false;
   }
 }
+
+export function trackViewContent(
+  eventId: string,
+  customData: Record<string, unknown>,
+): boolean {
+  if (typeof window === 'undefined' || typeof window.fbq !== 'function') return false;
+
+  try {
+    window.fbq('track', 'ViewContent', customData, { eventID: eventId });
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
