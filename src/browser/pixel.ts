@@ -5,7 +5,7 @@ declare global {
   interface Window {
     fbq?: (...args: unknown[]) => void;
     _fbq?: (...args: unknown[]) => void;
-    __vvPixelsInitialized?: boolean;
+    __vvInitializedPixelIds?: Set<string>;
     __vvPixelLoaded?: boolean;
     __vvPixelLoadPromise?: Promise<void>;
   }
@@ -93,12 +93,14 @@ export function initializePixel(
   initParams: { external_id: string; country?: string },
 ): boolean {
   if (typeof window === 'undefined') return false;
-  if (window.__vvPixelsInitialized) return false;
   if (typeof window.fbq !== 'function') return false;
+
+  const ids = (window.__vvInitializedPixelIds ??= new Set<string>());
+  if (ids.has(pixelId)) return false;
 
   try {
     window.fbq('init', pixelId, initParams);
-    window.__vvPixelsInitialized = true;
+    ids.add(pixelId);
     return true;
   } catch (err) {
     return false;
@@ -124,20 +126,6 @@ export function trackViewContent(
 
   try {
     window.fbq('track', 'ViewContent', customData, { eventID: eventId });
-    return true;
-  } catch (err) {
-    return false;
-  }
-}
-
-export function updatePixelAdvancedMatching(
-  pixelId: string,
-  advancedMatchingData: Record<string, unknown>,
-): boolean {
-  if (typeof window === 'undefined' || typeof window.fbq !== 'function') return false;
-
-  try {
-    window.fbq('init', pixelId, advancedMatchingData);
     return true;
   } catch (err) {
     return false;

@@ -115,6 +115,7 @@ describe('integration/fullJourney', () => {
     (globalThis as any).window.location.search = '';
     (globalThis as any).window.scrollY = 0;
     (globalThis as any).window.__listeners = {};
+    (globalThis as any).window.__vvInitializedPixelIds = new Set<string>();
     capi = createMetaCapi(capiConfig);
   }
 
@@ -348,9 +349,10 @@ describe('integration/fullJourney', () => {
     });
   });
 
-  it('browser advanced matching uses normalized raw customer values', async () => {
+  it('Pixel ID is initialized exactly once and checkout does not re-init', async () => {
     reset();
     const m = meta();
+    await m.firePageView();
     await m.updateCheckout({
       name: 'Bola Ategbe',
       phone: '08012345678',
@@ -359,15 +361,14 @@ describe('integration/fullJourney', () => {
       state: 'Lagos',
     });
 
-    const initCall = fbqCalls.find((c) => c[0] === 'init' && (c[2] as any)?.ph === '2348012345678');
-    assert.ok(initCall);
-    const data = initCall![2] as Record<string, unknown>;
-    assert.equal(data.ph, '2348012345678');
-    assert.equal(data.fn, 'bola');
-    assert.equal(data.ln, 'ategbe');
-    assert.equal(data.em, 'bola@example.com');
-    assert.equal(data.ct, 'lagos');
-    assert.equal(data.st, 'lagos');
+    const initCalls = fbqCalls.filter((c) => c[0] === 'init');
+    assert.equal(initCalls.length, 1, 'fbq init must be called exactly once per Pixel ID');
+    const data = initCalls[0][2] as Record<string, unknown>;
+    assert.equal(typeof data.external_id, 'string');
+    assert.equal(data.country, 'ng');
+    assert.equal('ph' in data, false);
+    assert.equal('fn' in data, false);
+    assert.equal('em' in data, false);
   });
 
   it('tracking failure does not crash the host application', async () => {

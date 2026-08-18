@@ -58,6 +58,7 @@ describe('browser/initiateCheckout', () => {
     store.clear();
     (globalThis as any).document.cookie = '';
     (globalThis as any).window.location.search = '';
+    (globalThis as any).window.__vvInitializedPixelIds = undefined;
     (globalThis as any).window.fbq = (...args: unknown[]) => { fbqCalls.push(args); };
   }
 
@@ -333,9 +334,11 @@ describe('browser/initiateCheckout', () => {
     assert.equal((pageBody as any).user_data.external_id, (icBody as any).user_data.external_id);
   });
 
-  it('browser advanced matching updates before browser InitiateCheckout with normalized values', async () => {
+  it('Pixel ID is initialized exactly once and late checkout does not re-init', async () => {
     reset();
     const m = meta();
+    await m.firePageView();
+    const afterPageView = fbqCalls.filter(c => c[0] === 'init').length;
     await m.updateCheckout({
       name: 'Bola Ategbe',
       phone: '08012345678',
@@ -343,24 +346,24 @@ describe('browser/initiateCheckout', () => {
       city: 'Lagos',
       state: 'Lagos',
     });
-    const initIndex = fbqCalls.findIndex(c => c[0] === 'init' && (c[2] as any)?.ph === '2348012345678');
-    const trackIndex = fbqCalls.findIndex(c => c[0] === 'track' && c[1] === 'InitiateCheckout');
-    assert.ok(initIndex >= 0);
-    assert.ok(trackIndex >= 0);
-    assert.ok(initIndex < trackIndex);
-    const initData = fbqCalls[initIndex][2] as Record<string, unknown>;
-    assert.equal(initData.ph, '2348012345678');
-    assert.equal(initData.fn, 'bola');
-    assert.equal(initData.ln, 'ategbe');
-    assert.equal(initData.em, 'bola@example.com');
-    assert.equal(initData.ct, 'lagos');
-    assert.equal(initData.st, 'lagos');
-    assert.equal(initData.country, 'ng');
+    const initCalls = fbqCalls.filter(c => c[0] === 'init');
+    assert.equal(initCalls.length, 1, 'Pixel ID must be initialized only once');
+    assert.equal(afterPageView, 1);
+    // The first and only init contains the initial known matching data only.
+    const initData = initCalls[0][2] as Record<string, unknown>;
     assert.equal(typeof initData.external_id, 'string');
-    // Browser advanced matching should not be SHA-256 hex strings.
-    assert.equal(/^[0-9a-f]{64}$/.test(initData.ph as string), false);
-    assert.equal(/^[0-9a-f]{64}$/.test(initData.em as string), false);
-    assert.equal(/^[0-9a-f]{64}$/.test(initData.fn as string), false);
+    assert.equal(initData.country, 'ng');
+    assert.equal('ph' in initData, false);
+    assert.equal('fn' in initData, false);
+    assert.equal('em' in initData, false);
+    // CAPI still receives the full customer matching data.
+    const userData = (capturedBody as any).user_data;
+    assert.equal(userData.phone, '2348012345678');
+    assert.equal(userData.first_name, 'bola');
+    assert.equal(userData.surname, 'ategbe');
+    assert.equal(userData.email, 'bola@example.com');
+    assert.equal(userData.city, 'lagos');
+    assert.equal(userData.state, 'lagos');
   });
 
   it('CAPI InitiateCheckout payload is normalized raw; customer fields not pre-hashed', async () => {

@@ -39,7 +39,7 @@ describe('browser/pixel', () => {
     (globalThis as any).window._fbq = undefined;
     (globalThis as any).window.__vvPixelLoaded = undefined;
     (globalThis as any).window.__vvPixelLoadPromise = undefined;
-    (globalThis as any).window.__vvPixelsInitialized = undefined;
+    (globalThis as any).window.__vvInitializedPixelIds = undefined;
   }
 
   function simulateLibraryTakeover() {

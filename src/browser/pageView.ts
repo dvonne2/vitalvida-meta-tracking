@@ -21,7 +21,7 @@ import { sanitizeSourceUrl } from '../shared/sourceUrl.js';
 import { normalizePhone, splitName, isValidEmail } from '../shared/checkout.js';
 import { getVisitorId } from './identity.js';
 import { captureFbc, getFbp } from './attribution.js';
-import { initializePixel, loadPixel, trackPageView, trackViewContent, trackInitiateCheckout, updatePixelAdvancedMatching } from './pixel.js';
+import { initializePixel, loadPixel, trackPageView, trackViewContent, trackInitiateCheckout } from './pixel.js';
 
 declare global {
   interface Window {
@@ -247,19 +247,9 @@ export function createMetaBrowser(rawConfig: MetaBrowserConfig) {
       const state = checkoutData.state?.trim().toLowerCase();
       const country = config.country;
 
-      const advancedMatchingData: Record<string, unknown> = {
-        external_id: visitorId,
-        ph: phone,
-        fn: name.firstName,
-      };
-
-      if (email) advancedMatchingData.em = email;
-      if (name.surname) advancedMatchingData.ln = name.surname;
-      if (city) advancedMatchingData.ct = city;
-      if (state) advancedMatchingData.st = state;
-      if (country) advancedMatchingData.country = country;
-
-      updatePixelAdvancedMatching(config.pixelId, advancedMatchingData);
+      const initParams: { external_id: string; country?: string } = { external_id: visitorId };
+      if (country) initParams.country = country;
+      initializePixel(config.pixelId, initParams);
 
       const customData = buildInitiateCheckoutCustomData(checkoutData);
       result.browserSent = trackInitiateCheckout(eventId, customData);

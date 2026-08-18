@@ -1,4 +1,4 @@
-import { describe, it, before, after } from 'node:test';
+import { describe, it, before, beforeEach, after } from 'node:test';
 import assert from 'node:assert';
 import { createMetaBrowser } from '../../src/browser/pageView.js';
 
@@ -51,6 +51,10 @@ describe('browser/pageView', () => {
         json: async () => ({ ok: true }),
       } as Response;
     };
+  });
+
+  beforeEach(() => {
+    (globalThis as any).window.__vvInitializedPixelIds = new Set<string>();
   });
 
   after(() => {
