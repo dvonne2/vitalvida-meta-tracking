@@ -4,10 +4,29 @@ const PIXEL_SCRIPT_URL = 'https://connect.facebook.net/en_US/fbevents.js';
 declare global {
   interface Window {
     fbq?: (...args: unknown[]) => void;
+    _fbq?: (...args: unknown[]) => void;
     __vvPixelsInitialized?: boolean;
     __vvPixelLoaded?: boolean;
     __vvPixelLoadPromise?: Promise<void>;
   }
+}
+
+function createFbqStub(): (...args: unknown[]) => void {
+  const fbq = ((...args: unknown[]) => {
+    const f = fbq as unknown as { callMethod?: (...args: unknown[]) => unknown; queue: unknown[] };
+    if (f.callMethod) {
+      f.callMethod.apply(f, args);
+    } else {
+      f.queue.push(args);
+    }
+  }) as unknown as (...args: unknown[]) => void;
+
+  (fbq as unknown as { push: typeof fbq }).push = fbq;
+  (fbq as unknown as { loaded: boolean }).loaded = true;
+  (fbq as unknown as { version: string }).version = '2.0';
+  (fbq as unknown as { queue: unknown[] }).queue = [] as unknown[];
+
+  return fbq;
 }
 
 export function loadPixel(): Promise<void> {
@@ -23,21 +42,21 @@ export function loadPixel(): Promise<void> {
     return window.__vvPixelLoadPromise;
   }
 
-  if (!window.fbq) {
-    const fbq = ((...args: unknown[]) => {
-      (fbq as unknown as { queue: unknown[] }).queue.push(args);
-    }) as unknown as (...args: unknown[]) => void;
-    (fbq as unknown as { queue: unknown[] }).queue = [] as unknown[];
-    window.fbq = fbq;
+  // An existing Pixel implementation (official or another source) is already present.
+  // Do not create a conflicting stub or load a second fbevents.js instance.
+  if (typeof window.fbq === 'function') {
+    window.__vvPixelLoaded = true;
+    return Promise.resolve();
+  }
+
+  window.fbq = createFbqStub();
+  if (!window._fbq) {
+    window._fbq = window.fbq;
   }
 
   const existing = document.getElementById(SCRIPT_ID);
   if (existing) {
     window.__vvPixelLoadPromise = new Promise<void>((resolve) => {
-      if (window.__vvPixelLoaded) {
-        resolve();
-        return;
-      }
       const onLoad = () => {
         window.__vvPixelLoaded = true;
         resolve();

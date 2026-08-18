@@ -1,6 +1,6 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert';
-import { loadPixel, initializePixel, trackPageView, trackInitiateCheckout } from '../../src/browser/pixel.js';
+import { loadPixel, initializePixel, trackPageView, trackViewContent, trackInitiateCheckout } from '../../src/browser/pixel.js';
 
 describe('browser/pixel', () => {
   const originalWindow = (globalThis as any).window;
@@ -36,30 +36,44 @@ describe('browser/pixel', () => {
     appended = [];
     fbqCalls = [];
     (globalThis as any).window.fbq = undefined;
+    (globalThis as any).window._fbq = undefined;
     (globalThis as any).window.__vvPixelLoaded = undefined;
     (globalThis as any).window.__vvPixelLoadPromise = undefined;
     (globalThis as any).window.__vvPixelsInitialized = undefined;
   }
 
-  it('creates window.fbq stub before fbevents.js loads', async () => {
+  function simulateLibraryTakeover() {
+    const fbq = (globalThis as any).window.fbq;
+    if (typeof fbq !== 'function') return;
+    fbq.callMethod = (...args: unknown[]) => { fbqCalls.push(args); };
+    const q = fbq.queue as unknown[][];
+    fbq.queue = [];
+    q.forEach((args) => fbq(...args));
+  }
+
+  it('creates a standards-compatible fbq stub before fbevents.js loads', async () => {
     reset();
     const p = loadPixel();
     assert.equal(appended.length, 1);
     const script = appended[0];
     assert.ok(script);
-    // Stub should be created before onload resolves
-    assert.ok(typeof (globalThis as any).window.fbq === 'function');
-    assert.ok(Array.isArray((globalThis as any).window.fbq.queue));
+
+    const fbq = (globalThis as any).window.fbq;
+    assert.equal(typeof fbq, 'function');
+    assert.equal(fbq.loaded, true);
+    assert.equal(fbq.version, '2.0');
+    assert.ok(Array.isArray(fbq.queue));
+    assert.equal(fbq, (globalThis as any).window._fbq);
+
     script.onload();
     await p;
-    assert.ok((globalThis as any).window.__vvPixelLoaded);
+    assert.equal((globalThis as any).window.__vvPixelLoaded, true);
   });
 
   it('first loadPixel() resolves when the script loads', async () => {
     reset();
     const p = loadPixel();
     const script = appended[0];
-    assert.ok(script);
     script.onload();
     await p;
     assert.equal((globalThis as any).window.__vvPixelLoaded, true);
@@ -78,7 +92,7 @@ describe('browser/pixel', () => {
     assert.equal((globalThis as any).window.__vvPixelLoaded, true);
   });
 
-  it('repeated loadPixel() resolves immediately when the script element already exists', async () => {
+  it('repeated loadPixel() resolves when the script element already exists', async () => {
     reset();
     (globalThis as any).document.getElementById = (id: string) => {
       return id === 'vitalvida-fbevents' ? appended[0] : null;
@@ -94,14 +108,46 @@ describe('browser/pixel', () => {
     (globalThis as any).document.getElementById = () => null;
   });
 
+  it('reuses an existing official fbq instead of creating a conflicting stub', async () => {
+    reset();
+    const existingFbq = (...args: unknown[]) => { fbqCalls.push(args); };
+    (existingFbq as any).loaded = true;
+    (existingFbq as any).version = '2.0';
+    (globalThis as any).window.fbq = existingFbq;
+
+    await loadPixel();
+    assert.equal(appended.length, 0);
+    assert.equal((globalThis as any).window.fbq, existingFbq);
+    assert.equal((globalThis as any).window.__vvPixelLoaded, true);
+  });
+
+  it('PageView queued before library readiness is ultimately processed', async () => {
+    reset();
+    const p = loadPixel();
+    const script = appended[0];
+
+    trackPageView('pv_before');
+    const fbq = (globalThis as any).window.fbq;
+    assert.equal(fbq.queue.length, 1);
+
+    script.onload();
+    await p;
+
+    simulateLibraryTakeover();
+    assert.equal(fbqCalls.length, 1);
+    assert.deepEqual(fbqCalls[0][0], 'track');
+    assert.deepEqual(fbqCalls[0][1], 'PageView');
+    assert.equal(fbq.queue.length, 0);
+  });
+
   it('browser PageView can actually fire after the Pixel is ready', async () => {
     reset();
     const p = loadPixel();
     const script = appended[0];
     script.onload();
     await p;
+    simulateLibraryTakeover();
 
-    (globalThis as any).window.fbq = (...args: unknown[]) => { fbqCalls.push(args); };
     const sent = trackPageView('pv_test123');
     assert.equal(sent, true);
     assert.equal(fbqCalls.length, 1);
@@ -109,20 +155,31 @@ describe('browser/pixel', () => {
     assert.deepEqual(fbqCalls[0][1], 'PageView');
   });
 
-  it('later InitiateCheckout does not hang and can fire after PageView', async () => {
+  it('browser ViewContent event emits', async () => {
     reset();
     const p = loadPixel();
-    const script = appended[0];
-    script.onload();
+    appended[0].onload();
     await p;
+    simulateLibraryTakeover();
 
-    (globalThis as any).window.fbq = (...args: unknown[]) => { fbqCalls.push(args); };
-    const pageView = trackPageView('pv_test456');
-    assert.equal(pageView, true);
+    const sent = trackViewContent('vc_test123', { content_name: 'Test', value: 100 });
+    assert.equal(sent, true);
+    assert.equal(fbqCalls.length, 1);
+    assert.equal(fbqCalls[0][1], 'ViewContent');
+  });
 
+  it('browser InitiateCheckout event emits after PageView without hanging', async () => {
+    reset();
+    const p = loadPixel();
+    appended[0].onload();
+    await p;
+    simulateLibraryTakeover();
+
+    trackPageView('pv_test456');
     const checkout = trackInitiateCheckout('ic_test456', { value: 100, currency: 'NGN' });
     assert.equal(checkout, true);
     assert.equal(fbqCalls.length, 2);
+    assert.equal(fbqCalls[0][1], 'PageView');
     assert.equal(fbqCalls[1][1], 'InitiateCheckout');
   });
 
@@ -131,8 +188,8 @@ describe('browser/pixel', () => {
     const p = loadPixel();
     appended[0].onload();
     await p;
+    simulateLibraryTakeover();
 
-    (globalThis as any).window.fbq = (...args: unknown[]) => { fbqCalls.push(args); };
     const first = initializePixel('987654321098765', { external_id: 'ext-1' });
     const second = initializePixel('987654321098765', { external_id: 'ext-1' });
     assert.equal(first, true);
